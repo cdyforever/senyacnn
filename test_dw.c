@@ -75,7 +75,7 @@ static int run_case(int W, int H, int C, int SIZE, int STRIDE, int OPAD)
 int main(void)
 {
     /* 覆盖：方阵/非方阵、stride 1/2、输出 pad 有无、大通道数(depthwise 224)、奇数尺寸 */
-    int cases[][5] = {
+    int cases[][6] = {
         {16, 16, 8, 3, 1, 0},
         {16, 16, 8, 3, 1, 1},
         {16, 16, 8, 3, 2, 0},
