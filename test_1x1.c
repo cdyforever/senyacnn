@@ -1,7 +1,7 @@
 /*
  * test_1x1.c - conv_1x1 单元测试
  *
- * 编译: gcc -O2 -I. test_1x1.c -lm -o test_1x1 && ./test_1x1
+ * 编译: gcc -O2 -I. test_1x1.c kernels/common/kernel_shared.c -lm -o test_1x1 && ./test_1x1
  * 直接 #include kernels/opt/kernel_conv_opt.c 以访问 static 内核函数。
  * 特意让输出槽位带 pad(OPAD=1)，验证内核对"输出 pad 属于下一层"
  * 这一布局约定的正确处理。线性激活下逐元素与朴素三重循环比对。

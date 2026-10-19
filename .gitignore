@@ -4,6 +4,9 @@
 *.exe
 build/
 
+# Demo output (test 程序画框后写出)
+out.bmp
+
 # IDE
 .vscode/
 .idea/

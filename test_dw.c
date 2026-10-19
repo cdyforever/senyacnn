@@ -1,7 +1,7 @@
 /*
  * test_dw.c - conv_depthwise 单元测试
  *
- * 编译: gcc -O2 -I. test_dw.c -lm -o test_dw && ./test_dw
+ * 编译: gcc -O2 -I. test_dw.c kernels/common/kernel_shared.c -lm -o test_dw && ./test_dw
  * 说明: 直接 #include kernels/opt/kernel_conv_opt.c 以访问其中的 static 内核函数。
  *       对每组 (W,H,C,size,stride,输出pad) 形状，用伪随机输入/权重分别跑
  *       conv_depthwise 与朴素参考实现，逐元素比较（阈值 1e-4）。
