@@ -38,16 +38,17 @@ enum {
     ACTIVATE_TYPE_SIGMOID,
 };
 
-float activate(float x, int type);                    /* 定义于 layer_conv.c */
+float activate(float x, int type);                    /* 定义于 kernels/common/kernel_common.c */
 char* get_activation_type_string(int type);           /* 定义于 parser.c，dump 用 */
 char* get_layer_type_string(int type);                /* 同上 */
 
 void  matrix_fill_pad(MATRIX *mat, float val);        /* 定义于 net.c */
 void  net_bn_fold(NET *net);                          /* 定义于 parser.c：BN 折叠进权重副本 */
 
-/* 各层前向实现。ilayer 指向本层槽位，olayer = ilayer+1 即输出矩阵所在槽位 */
-void layer_groupconv_forward     (NET *net, LAYER *ilayer, LAYER *olayer);
-void layer_groupconv_forward_opt (NET *net, LAYER *ilayer, LAYER *olayer);
+/*
+ * 各层前向实现。ilayer 指向本层槽位，olayer = ilayer+1 即输出矩阵所在槽位。
+ * 卷积三套实现（orig / opt / avx2）放在 kernels/ 下，入口见 kernels/kernel_common.h。
+ */
 void layer_avgmaxpool_forward(LAYER *ilayer, LAYER *olayer, int flag);
 void layer_upsample_forward  (LAYER *ilayer, LAYER *olayer);
 void layer_dropout_forward   (LAYER *ilayer, LAYER *olayer);

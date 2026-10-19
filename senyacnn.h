@@ -75,8 +75,10 @@ typedef struct {
  * 整网描述与全局缓冲。
  * - bbox_list 直接别名 layer_list[0].matrix.data（复用输入图像缓冲存检测框，
  *   推理后段输入缓冲已无其他读者）；bbox_max 为该缓冲能容纳的最大框数。
- * - s1/s2 记录 letterbox 缩放比例（原图尺寸 / 网络内缩放尺寸），用于 NMS 还原坐标。
- * - opt_conv : 非 0 时 forward 走优化内核，并在首次前向时折叠 BN（bn_fused 置位）。
+ * - conv_impl : 卷积内核实现选择，CONV_IMPL_ORIG / _OPT / _AVX2（见 kernels/kernel_common.h）。
+ *               avx2 在编译期缺失或 CPU 不支持时由派发层自动降级到 opt。
+ *               opt / avx2 只认 BN 折叠后的 data2/bias2。
+ * - bn_fused  : BN 是否已折叠进权重副本；切换实现时由 net_set_conv_impl 清零复判。
  * - weight_buf/foldbuf/layerbuf/cnntempbuf 均在 net_load 一次分配，net_free 统一释放。
  */
 typedef struct {
@@ -86,7 +88,7 @@ typedef struct {
     int    bbox_num;
     int    bbox_max;
     int    s1, s2;
-    int    opt_conv;
+    int    conv_impl;
     int    bn_fused;
     int    weight_size;              /* 权重总元素数（float 个数，非字节） */
     float *weight_buf;               /* 原始权重（darknet 文件原样内容）   */
@@ -101,6 +103,10 @@ NET* net_load   (char *file1, char *file2);
 void net_free   (NET *net);
 void net_input  (NET *net, unsigned char *bgr, int w, int h, float *mean, float *norm);
 void net_forward(NET *net);
+
+/* 卷积实现切换：0=orig（原始标量） 1=opt（优化标量） 2=avx2（向量化） */
+int  net_set_conv_impl     (NET *net, int impl);
+int  net_effective_conv_impl(NET *net);
 void net_dump   (NET *net);
 
 #endif

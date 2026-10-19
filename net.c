@@ -6,6 +6,7 @@
 #include <string.h>
 #include <float.h>
 #include "internal.h"
+#include "kernels/kernel_common.h"
 
 /*
  * 把矩阵四周的 pad 边缘统一填成 val。
@@ -95,14 +96,19 @@ void net_input(NET *net, unsigned char *bgr, int w, int h, float *mean, float *n
  * 前向推理主循环。
  * 所有输出缓冲已在 net_load 分配好，本函数无任何 malloc/free；
  * refcnt 统计仅供 net_dump 显示依赖关系。
- * 末尾调用 NMS 完成候选框筛选与坐标还原（阈值 0.5、min-IoU 模式）。
+ * 卷积层交给 kernel_conv_forward 按 net->conv_impl 分派到 orig / opt / avx2，
+ * 后者不可用时自动降级。末尾调用 NMS 完成候选框筛选与坐标还原。
  */
 void net_forward(NET *net)
 {
     LAYER *ilayer, *olayer; int i, j;
     if (!net) return;
-    /* 优化路径首次前向时折叠 BN（只做一次；原始路径跳过） */
-    if (net->opt_conv && !net->bn_fused) net_bn_fold(net);
+    /*
+     * 首次前向按需要折叠 BN：opt / avx2 只认折叠后的 data2/bias2。
+     * 折叠一次即可，bn_fused 置位后不再重复。切换实现时（net_set_conv_impl）
+     * 会把 bn_fused 清零，从而按新实现的需要重新判定。
+     */
+    if (!net->bn_fused && kernel_impl_needs_bn_fold(net->conv_impl)) net_bn_fold(net);
     /* 统计 route/shortcut 对各层的引用计数（dump 展示用） */
     for (i=0; i<net->layer_num; i++) {
         if (net->layer_list[i].depend_num > 0) {
@@ -116,10 +122,7 @@ void net_forward(NET *net)
         ilayer = net->layer_list + i + 0;
         olayer = net->layer_list + i + 1;
         switch (ilayer->type) {
-        case LAYER_TYPE_CONV    :
-            if (net->opt_conv) layer_groupconv_forward_opt(net, ilayer, olayer);
-            else               layer_groupconv_forward    (net, ilayer, olayer);
-            break;
+        case LAYER_TYPE_CONV    : kernel_conv_forward(net, ilayer, olayer);      break;
         case LAYER_TYPE_AVGPOOL : layer_avgmaxpool_forward(ilayer, olayer, 0);   break;
         case LAYER_TYPE_MAXPOOL : layer_avgmaxpool_forward(ilayer, olayer, 1);   break;
         case LAYER_TYPE_UPSAMPLE: layer_upsample_forward  (ilayer, olayer);      break;
@@ -130,6 +133,34 @@ void net_forward(NET *net)
         }
     }
     net->bbox_num = nms(net->bbox_list, net->bbox_num, 0.5f, 1, net->s1, net->s2);
+}
+
+/*
+ * 切换卷积实现。切换后必须让 BN 折叠状态重新判定：
+ * orig 用原始 scale/mean/var 参数，不依赖折叠；opt / avx2 只认 data2/bias2。
+ * 这里统一清 bn_fused，让下一次 net_forward 按新实现的需要决定是否折叠，
+ * 避免两个状态互相耦合（折叠本身是幂等的，重复折叠结果相同）。
+ */
+int net_set_conv_impl(NET *net, int impl)
+{
+    if (!net) return -1;
+    if (impl < CONV_IMPL_ORIG || impl > CONV_IMPL_AVX2) return -1;
+    if (impl == CONV_IMPL_AVX2 && !kernel_avx2_compiled()) {
+        printf("avx2 kernels not built, keep impl %d\n", net->conv_impl);
+        return -1;
+    }
+    net->conv_impl = impl;
+    net->bn_fused  = 0;
+    return impl;
+}
+
+/* 当前实际生效的实现（考虑编译期是否包含与 CPU 能力后的结果） */
+int net_effective_conv_impl(NET *net)
+{
+    if (!net) return CONV_IMPL_ORIG;
+    if (net->conv_impl == CONV_IMPL_AVX2)
+        return (kernel_avx2_compiled() && kernel_avx2_supported()) ? CONV_IMPL_AVX2 : CONV_IMPL_OPT;
+    return net->conv_impl;
 }
 
 /* 打印逐层结构表：类型/核参数/输入输出尺寸/BN与激活/被引用次数 */

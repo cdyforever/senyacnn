@@ -23,9 +23,23 @@ sh build-linux.sh > /dev/null 2>&1 || { echo "BUILD_FAIL"; exit 1; }
 echo "BUILD_OK"
 
 # ---------- 1. 内核单元测试 ----------
-gcc -O2 -I. test_dw.c  -lm -o /tmp/t_dw  2>/dev/null && /tmp/t_dw  | tail -1
-gcc -O2 -I. test_1x1.c -lm -o /tmp/t_11 2>/dev/null && /tmp/t_11
+gcc -O2 -I. test_dw.c  kernels/common/kernel_shared.c -lm -o /tmp/t_dw  2>/dev/null && /tmp/t_dw  | tail -1
+gcc -O2 -I. test_1x1.c kernels/common/kernel_shared.c -lm -o /tmp/t_11  2>/dev/null && /tmp/t_11
 
+# ---------- 1b. 三套内核数值一致性（张量级逐层比对 + 确定性自检）----------
+# 构建 A：orig 用 fast_inverse_sqrt 近似（历史基线行为）
+# 构建 B：orig 也改用精确 sqrtf（-DKERNEL_ORIG_EXACT_RSQRT），用于隔离该近似
+TC_SRC="test_consistency.c bmpfile.c parser.c layer_conv.c layer_pool.c layer_misc.c \
+        layer_yolo.c nms.c net.c kernels/common/kernel_shared.c kernels/common/kernel_common.c \
+        kernels/orig/kernel_conv_orig.c kernels/opt/kernel_conv_opt.c kernels/avx2/kernel_conv_avx2.c"
+if gcc -O3 -I. $TC_SRC -o /tmp/t_cons_a -lm 2>/dev/null; then
+  echo "--- 一致性 构建A(orig=近似rsqrt) ---"
+  /tmp/t_cons_a test.bmp yolo-fastest-1.1.cfg yolo-fastest-1.1.weights | grep -E '特征图 |判定|结论'
+fi
+if gcc -O3 -I. -DKERNEL_ORIG_EXACT_RSQRT $TC_SRC -o /tmp/t_cons_b -lm 2>/dev/null; then
+  echo "--- 一致性 构建B(orig=精确sqrtf) ---"
+  /tmp/t_cons_b test.bmp yolo-fastest-1.1.cfg yolo-fastest-1.1.weights | grep -E '特征图 |判定|结论'
+fi
 # ---------- 2. 计时与输出采集 ----------
 # run <开关> <cfg> <weights> <标签>
 run() {
